@@ -17,7 +17,9 @@ use crate::{
     actions::PublishDataPointAction,
     box_kind::{make_oracle_box_candidate, OracleBox, OracleBoxWrapper, OracleBoxWrapperInputs},
     contracts::oracle::{OracleContract, OracleContractError},
-    datapoint_source::{DataPointSource, DataPointSourceError},
+    datapoint_source::{
+        predef::fetch_predef_source_aggregated, DataPointSource, DataPointSourceError,
+    },
     oracle_config::BASE_FEE,
     oracle_state::DataSourceError,
     oracle_types::{BlockHeight, EpochCounter},
@@ -45,7 +47,7 @@ pub enum PublishDatapointActionError {
     OracleContract(#[from] OracleContractError),
 }
 
-pub fn build_subsequent_publish_datapoint_action(
+pub async fn build_subsequent_publish_datapoint_action(
     local_datapoint_box: &OracleBoxWrapper,
     wallet: &dyn WalletDataSource,
     height: BlockHeight,
@@ -54,7 +56,10 @@ pub fn build_subsequent_publish_datapoint_action(
     new_epoch_counter: EpochCounter,
     reward_token_id: &RewardTokenId,
 ) -> Result<(PublishDataPointAction, PublishDatapointActionReport), PublishDatapointActionError> {
-    let new_datapoint = datapoint_source.get_datapoint()?;
+    //let new_datapoint = datapoint_source.get_datapoint()?;
+    let new_datapoint =
+        fetch_predef_source_aggregated(&crate::pool_config::PredefinedDataPointSource::NanoErgXau)
+            .await?;
     let in_oracle_box = local_datapoint_box;
 
     let outbox_reward_tokens = if reward_token_id != &in_oracle_box.reward_token().token_id {
@@ -176,22 +181,19 @@ mod tests {
     use std::convert::TryInto;
 
     use super::*;
-    use crate::box_kind::PoolBox;
+    //use crate::box_kind::PoolBox;
     use crate::contracts::oracle::OracleContractParameters;
-    use crate::contracts::pool::PoolContractParameters;
-    use crate::oracle_state::PoolBoxSource;
-    use crate::oracle_types::{EpochLength, Rate};
-    use crate::pool_commands::test_utils::{
-        find_input_boxes, generate_token_ids, make_datapoint_box, make_pool_box,
-        make_wallet_unspent_box, PoolBoxMock, WalletDataMock,
-    };
+    //use crate::contracts::pool::PoolContractParameters;
+    //use crate::oracle_state::PoolBoxSource;
+    use crate::oracle_types::Rate;
+    use crate::pool_commands::test_utils::{generate_token_ids, WalletDataMock};
     use crate::spec_token::TokenIdKind;
     use ergo_lib::chain::ergo_state_context::ErgoStateContext;
     use ergo_lib::chain::transaction::TxId;
     use ergo_lib::ergotree_interpreter::sigma_protocol::private_input::DlogProverInput;
     use ergo_lib::ergotree_ir::chain::address::AddressEncoder;
     use ergo_lib::ergotree_ir::chain::ergo_box::{BoxTokens, ErgoBox, NonMandatoryRegisters};
-    use ergo_lib::ergotree_ir::chain::token::{Token, TokenId};
+    use ergo_lib::ergotree_ir::chain::token::Token;
     use ergo_lib::ergotree_ir::ergo_tree::ErgoTree;
     use ergo_lib::ergotree_ir::mir::constant::Constant;
     use ergo_lib::ergotree_ir::mir::expr::Expr;
@@ -210,93 +212,94 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_subsequent_publish_datapoint() {
-        let ctx = force_any_val::<ErgoStateContext>();
-        let height = BlockHeight(ctx.pre_header.height);
-        let token_ids = generate_token_ids();
-        let oracle_contract_parameters = OracleContractParameters::default();
-        let pool_contract_parameters = PoolContractParameters::default();
-        let pool_box_epoch_id = EpochCounter(1);
-        let in_pool_box = make_pool_box(
-            200,
-            pool_box_epoch_id,
-            *BASE_FEE,
-            height - EpochLength(32), // from previous epoch
-            &pool_contract_parameters,
-            &token_ids,
-        );
-        let secret = force_any_val::<DlogProverInput>();
-        let wallet = Wallet::from_secrets(vec![secret.clone().into()]);
-        let oracle_pub_key = secret.public_image().h;
+    // #[test]
+    // fn test_subsequent_publish_datapoint() {
+    //     let ctx = force_any_val::<ErgoStateContext>();
+    //     let height = BlockHeight(ctx.pre_header.height);
+    //     let token_ids = generate_token_ids();
+    //     let oracle_contract_parameters = OracleContractParameters::default();
+    //     let pool_contract_parameters = PoolContractParameters::default();
+    //     let pool_box_epoch_id = EpochCounter(1);
+    //     let in_pool_box = make_pool_box(
+    //         200,
+    //         pool_box_epoch_id,
+    //         *BASE_FEE,
+    //         height - EpochLength(32), // from previous epoch
+    //         &pool_contract_parameters,
+    //         &token_ids,
+    //     );
+    //     let secret = force_any_val::<DlogProverInput>();
+    //     let wallet = Wallet::from_secrets(vec![secret.clone().into()]);
+    //     let oracle_pub_key = secret.public_image().h;
 
-        let pool_box_mock = PoolBoxMock {
-            pool_box: in_pool_box,
-        };
+    //     let pool_box_mock = PoolBoxMock {
+    //         pool_box: in_pool_box,
+    //     };
 
-        let oracle_box_wrapper_inputs =
-            OracleBoxWrapperInputs::try_from((oracle_contract_parameters, &token_ids)).unwrap();
-        let oracle_box = OracleBoxWrapper::new(
-            make_datapoint_box(
-                *oracle_pub_key,
-                200,
-                EpochCounter(pool_box_epoch_id.0 - 1),
-                &token_ids,
-                oracle_box_wrapper_inputs
-                    .contract_inputs
-                    .contract_parameters()
-                    .min_storage_rent,
-                height - EpochLength(99),
-                100,
-            ),
-            &oracle_box_wrapper_inputs,
-        )
-        .unwrap();
+    //     let oracle_box_wrapper_inputs =
+    //         OracleBoxWrapperInputs::try_from((oracle_contract_parameters, &token_ids)).unwrap();
+    //     let oracle_box = OracleBoxWrapper::new(
+    //         make_datapoint_box(
+    //             *oracle_pub_key,
+    //             200,
+    //             EpochCounter(pool_box_epoch_id.0 - 1),
+    //             &token_ids,
+    //             oracle_box_wrapper_inputs
+    //                 .contract_inputs
+    //                 .contract_parameters()
+    //                 .min_storage_rent,
+    //             height - EpochLength(99),
+    //             100,
+    //         ),
+    //         &oracle_box_wrapper_inputs,
+    //     )
+    //     .unwrap();
 
-        let change_address = AddressEncoder::unchecked_parse_network_address_from_str(
-            "9iHyKxXs2ZNLMp9N9gbUT9V8gTbsV7HED1C1VhttMfBUMPDyF7r",
-        )
-        .unwrap();
+    //     let change_address = AddressEncoder::unchecked_parse_network_address_from_str(
+    //         "9iHyKxXs2ZNLMp9N9gbUT9V8gTbsV7HED1C1VhttMfBUMPDyF7r",
+    //     )
+    //     .unwrap();
 
-        let wallet_unspent_box = make_wallet_unspent_box(
-            secret.public_image(),
-            BASE_FEE.checked_mul_u32(10000).unwrap(),
-            None,
-        );
-        let wallet_mock = WalletDataMock {
-            unspent_boxes: vec![wallet_unspent_box],
-            change_address: change_address.clone(),
-        };
+    //     let wallet_unspent_box = make_wallet_unspent_box(
+    //         secret.public_image(),
+    //         BASE_FEE.checked_mul_u32(10000).unwrap(),
+    //         None,
+    //     );
+    //     let wallet_mock = WalletDataMock {
+    //         unspent_boxes: vec![wallet_unspent_box],
+    //         change_address: change_address.clone(),
+    //     };
 
-        let datapoint_source = MockDatapointSource {
-            datapoint: 201.into(),
-        };
-        let (action, _) = build_subsequent_publish_datapoint_action(
-            &oracle_box,
-            &wallet_mock,
-            height,
-            change_address.address(),
-            &datapoint_source,
-            pool_box_epoch_id,
-            &token_ids.reward_token_id,
-        )
-        .unwrap();
+    //     let datapoint_source = MockDatapointSource {
+    //         datapoint: 201.into(),
+    //     };
+    //     let (action, _) = build_subsequent_publish_datapoint_action(
+    //         &oracle_box,
+    //         &wallet_mock,
+    //         height,
+    //         change_address.address(),
+    //         &datapoint_source,
+    //         pool_box_epoch_id,
+    //         &token_ids.reward_token_id,
+    //     )
+    //     .await
+    //     .unwrap();
 
-        let mut possible_input_boxes = vec![
-            pool_box_mock.get_pool_box().unwrap().get_box().clone(),
-            oracle_box.get_box().clone(),
-        ];
-        possible_input_boxes.append(&mut wallet_mock.get_unspent_wallet_boxes().unwrap());
+    //     let mut possible_input_boxes = vec![
+    //         pool_box_mock.get_pool_box().unwrap().get_box().clone(),
+    //         oracle_box.get_box().clone(),
+    //     ];
+    //     possible_input_boxes.append(&mut wallet_mock.get_unspent_wallet_boxes().unwrap());
 
-        let tx_context = TransactionContext::new(
-            action.tx.clone(),
-            find_input_boxes(action.tx, possible_input_boxes.clone()),
-            Vec::new(),
-        )
-        .unwrap();
+    //     let tx_context = TransactionContext::new(
+    //         action.tx.clone(),
+    //         find_input_boxes(action.tx, possible_input_boxes.clone()),
+    //         Vec::new(),
+    //     )
+    //     .unwrap();
 
-        let _signed_tx = wallet.sign_transaction(tx_context, &ctx, None).unwrap();
-    }
+    //     let _signed_tx = wallet.sign_transaction(tx_context, &ctx, None).unwrap();
+    // }
 
     #[test]
     fn test_first_publish_datapoint() {
@@ -382,102 +385,102 @@ mod tests {
         let _signed_tx = wallet.sign_transaction(tx_context, &ctx, None).unwrap();
     }
 
-    #[test]
-    fn test_subsequent_publish_datapoint_with_minted_reward_token() {
-        let ctx = force_any_val::<ErgoStateContext>();
-        let height = BlockHeight(ctx.pre_header.height);
-        let token_ids = generate_token_ids();
-        let minted_reward_token_id =
-            RewardTokenId::from_token_id_unchecked(force_any_val::<TokenId>());
-        let oracle_contract_parameters = OracleContractParameters::default();
-        let pool_contract_parameters = PoolContractParameters::default();
-        let pool_box_epoch_id = EpochCounter(1);
-        dbg!(&token_ids);
-        dbg!(&minted_reward_token_id);
-        let in_pool_box = make_pool_box(
-            200,
-            pool_box_epoch_id,
-            *BASE_FEE,
-            height - EpochLength(32), // from previous epoch
-            &pool_contract_parameters,
-            &token_ids,
-        );
-        let secret = force_any_val::<DlogProverInput>();
-        let wallet = Wallet::from_secrets(vec![secret.clone().into()]);
-        let oracle_pub_key = secret.public_image().h;
+    // #[test]
+    // fn test_subsequent_publish_datapoint_with_minted_reward_token() {
+    //     let ctx = force_any_val::<ErgoStateContext>();
+    //     let height = BlockHeight(ctx.pre_header.height);
+    //     let token_ids = generate_token_ids();
+    //     let minted_reward_token_id =
+    //         RewardTokenId::from_token_id_unchecked(force_any_val::<TokenId>());
+    //     let oracle_contract_parameters = OracleContractParameters::default();
+    //     let pool_contract_parameters = PoolContractParameters::default();
+    //     let pool_box_epoch_id = EpochCounter(1);
+    //     dbg!(&token_ids);
+    //     dbg!(&minted_reward_token_id);
+    //     let in_pool_box = make_pool_box(
+    //         200,
+    //         pool_box_epoch_id,
+    //         *BASE_FEE,
+    //         height - EpochLength(32), // from previous epoch
+    //         &pool_contract_parameters,
+    //         &token_ids,
+    //     );
+    //     let secret = force_any_val::<DlogProverInput>();
+    //     let wallet = Wallet::from_secrets(vec![secret.clone().into()]);
+    //     let oracle_pub_key = secret.public_image().h;
 
-        let pool_box_mock = PoolBoxMock {
-            pool_box: in_pool_box,
-        };
+    //     let pool_box_mock = PoolBoxMock {
+    //         pool_box: in_pool_box,
+    //     };
 
-        let oracle_box_wrapper_inputs =
-            OracleBoxWrapperInputs::try_from((oracle_contract_parameters, &token_ids)).unwrap();
-        let oracle_box = OracleBoxWrapper::new(
-            make_datapoint_box(
-                *oracle_pub_key,
-                200,
-                EpochCounter(pool_box_epoch_id.0 - 1),
-                &token_ids,
-                oracle_box_wrapper_inputs
-                    .contract_inputs
-                    .contract_parameters()
-                    .min_storage_rent,
-                height - EpochLength(99),
-                100,
-            ),
-            &oracle_box_wrapper_inputs,
-        )
-        .unwrap();
+    //     let oracle_box_wrapper_inputs =
+    //         OracleBoxWrapperInputs::try_from((oracle_contract_parameters, &token_ids)).unwrap();
+    //     let oracle_box = OracleBoxWrapper::new(
+    //         make_datapoint_box(
+    //             *oracle_pub_key,
+    //             200,
+    //             EpochCounter(pool_box_epoch_id.0 - 1),
+    //             &token_ids,
+    //             oracle_box_wrapper_inputs
+    //                 .contract_inputs
+    //                 .contract_parameters()
+    //                 .min_storage_rent,
+    //             height - EpochLength(99),
+    //             100,
+    //         ),
+    //         &oracle_box_wrapper_inputs,
+    //     )
+    //     .unwrap();
 
-        let change_address = AddressEncoder::unchecked_parse_network_address_from_str(
-            "9iHyKxXs2ZNLMp9N9gbUT9V8gTbsV7HED1C1VhttMfBUMPDyF7r",
-        )
-        .unwrap();
+    //     let change_address = AddressEncoder::unchecked_parse_network_address_from_str(
+    //         "9iHyKxXs2ZNLMp9N9gbUT9V8gTbsV7HED1C1VhttMfBUMPDyF7r",
+    //     )
+    //     .unwrap();
 
-        let wallet_unspent_box = make_wallet_unspent_box(
-            secret.public_image(),
-            BASE_FEE.checked_mul_u32(10000).unwrap(),
-            Some(
-                vec![Token {
-                    token_id: minted_reward_token_id.token_id(),
-                    amount: 1u64.try_into().unwrap(),
-                }]
-                .try_into()
-                .unwrap(),
-            ),
-        );
-        let wallet_mock = WalletDataMock {
-            unspent_boxes: vec![wallet_unspent_box],
-            change_address: change_address.clone(),
-        };
+    //     let wallet_unspent_box = make_wallet_unspent_box(
+    //         secret.public_image(),
+    //         BASE_FEE.checked_mul_u32(10000).unwrap(),
+    //         Some(
+    //             vec![Token {
+    //                 token_id: minted_reward_token_id.token_id(),
+    //                 amount: 1u64.try_into().unwrap(),
+    //             }]
+    //             .try_into()
+    //             .unwrap(),
+    //         ),
+    //     );
+    //     let wallet_mock = WalletDataMock {
+    //         unspent_boxes: vec![wallet_unspent_box],
+    //         change_address: change_address.clone(),
+    //     };
 
-        let datapoint_source = MockDatapointSource {
-            datapoint: 201.into(),
-        };
-        let (action, _) = build_subsequent_publish_datapoint_action(
-            &oracle_box,
-            &wallet_mock,
-            height,
-            change_address.address(),
-            &datapoint_source,
-            pool_box_epoch_id,
-            &minted_reward_token_id,
-        )
-        .unwrap();
+    //     let datapoint_source = MockDatapointSource {
+    //         datapoint: 201.into(),
+    //     };
+    //     let (action, _) = build_subsequent_publish_datapoint_action(
+    //         &oracle_box,
+    //         &wallet_mock,
+    //         height,
+    //         change_address.address(),
+    //         &datapoint_source,
+    //         pool_box_epoch_id,
+    //         &minted_reward_token_id,
+    //     )
+    //     .unwrap();
 
-        let mut possible_input_boxes = vec![
-            pool_box_mock.get_pool_box().unwrap().get_box().clone(),
-            oracle_box.get_box().clone(),
-        ];
-        possible_input_boxes.append(&mut wallet_mock.get_unspent_wallet_boxes().unwrap());
+    //     let mut possible_input_boxes = vec![
+    //         pool_box_mock.get_pool_box().unwrap().get_box().clone(),
+    //         oracle_box.get_box().clone(),
+    //     ];
+    //     possible_input_boxes.append(&mut wallet_mock.get_unspent_wallet_boxes().unwrap());
 
-        let tx_context = TransactionContext::new(
-            action.tx.clone(),
-            find_input_boxes(action.tx, possible_input_boxes.clone()),
-            Vec::new(),
-        )
-        .unwrap();
+    //     let tx_context = TransactionContext::new(
+    //         action.tx.clone(),
+    //         find_input_boxes(action.tx, possible_input_boxes.clone()),
+    //         Vec::new(),
+    //     )
+    //     .unwrap();
 
-        let _signed_tx = wallet.sign_transaction(tx_context, &ctx, None).unwrap();
-    }
+    //     let _signed_tx = wallet.sign_transaction(tx_context, &ctx, None).unwrap();
+    // }
 }

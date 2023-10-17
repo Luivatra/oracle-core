@@ -16,7 +16,7 @@ pub fn sync_fetch_predef_source_aggregated(
     Ok(rate)
 }
 
-async fn fetch_predef_source_aggregated(
+pub async fn fetch_predef_source_aggregated(
     predef_datasource: &PredefinedDataPointSource,
 ) -> Result<Rate, DataPointSourceError> {
     let rate_float = match predef_datasource {

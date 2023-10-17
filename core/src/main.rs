@@ -375,7 +375,9 @@ async fn main() -> Result<(), anyhow::Error> {
                     &node_api,
                     action_report_storage.clone(),
                     &change_address,
-                ) {
+                )
+                .await
+                {
                     error!("error: {:?}", e);
                 }
                 // Delay loop restart
@@ -526,7 +528,7 @@ fn handle_pool_command(command: Command, node_api: &NodeApi, network_prefix: Net
     }
 }
 
-fn main_loop_iteration(
+async fn main_loop_iteration(
     oracle_pool: Arc<OraclePool>,
     read_only: bool,
     datapoint_source: &RuntimeDataPointSource,
@@ -564,7 +566,8 @@ fn main_loop_iteration(
             height,
             change_address.address(),
             datapoint_source,
-        );
+        )
+        .await;
         if let Some((action, report)) =
             log_and_continue_if_non_fatal(change_address.network(), build_action_tuple_res)?
         {
