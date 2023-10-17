@@ -213,7 +213,8 @@ enum Command {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let args = Args::parse();
 
     ORACLE_CONFIG_FILE_PATH
@@ -379,8 +380,7 @@ fn main() {
                     error!("error: {:?}", e);
                 }
                 // Delay loop restart
-                let runtime = tokio::runtime::Runtime::new().unwrap();
-                runtime.block_on(socket.next());
+                let _ = socket.next().await.unwrap();
             }
         }
         oracle_command => handle_pool_command(oracle_command, &node_api, network_prefix),
