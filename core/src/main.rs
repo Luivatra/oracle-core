@@ -213,7 +213,8 @@ enum Command {
     },
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
     let args = Args::parse();
 
     ORACLE_CONFIG_FILE_PATH
@@ -255,7 +256,7 @@ fn main() {
         println!(
             "Please, set the required parameters(node credentials, oracle_address) and run again"
         );
-        return;
+        return Ok(());
     }
 
     let cmdline_log_level = if args.verbose {
@@ -379,11 +380,12 @@ fn main() {
                     error!("error: {:?}", e);
                 }
                 // Delay loop restart
-                tokio_runtime.block_on(socket.next());
+                let _ = socket.next().await.unwrap().unwrap();
             }
         }
         oracle_command => handle_pool_command(oracle_command, &node_api, network_prefix),
-    }
+    };
+    Ok(())
 }
 
 /// Handle all other commands
