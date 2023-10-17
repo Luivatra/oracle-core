@@ -377,6 +377,7 @@ fn main() {
                 }
                 // Delay loop restart
                 let _ = socket.recv_msg(0);
+                println!("new block");
             }
         }
         oracle_command => handle_pool_command(oracle_command, &node_api, network_prefix),
