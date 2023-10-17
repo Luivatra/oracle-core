@@ -62,6 +62,7 @@ use ergo_lib::ergotree_ir::chain::address::NetworkAddress;
 use ergo_lib::ergotree_ir::chain::address::NetworkPrefix;
 use ergo_lib::ergotree_ir::chain::token::TokenAmount;
 use ergo_lib::ergotree_ir::chain::token::TokenId;
+use futures::StreamExt;
 use log::error;
 use log::LevelFilter;
 use metrics::start_metrics_server;
@@ -92,8 +93,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::RwLock;
-use std::thread;
-use std::time::Duration;
+use tmq::subscribe;
 
 use crate::actions::execute_action;
 use crate::address_util::pks_to_network_addresses;
@@ -362,6 +362,11 @@ fn main() {
                     }
                 });
             }
+            let mut socket = subscribe(&tmq::Context::new())
+                .connect("tcp://49.12.210.225:9060")
+                .unwrap()
+                .subscribe(b"newBlock")
+                .unwrap();
             loop {
                 if let Err(e) = main_loop_iteration(
                     oracle_pool.clone(),
@@ -374,7 +379,8 @@ fn main() {
                     error!("error: {:?}", e);
                 }
                 // Delay loop restart
-                thread::sleep(Duration::new(30, 0));
+                let runtime = tokio::runtime::Runtime::new().unwrap();
+                runtime.block_on(socket.next());
             }
         }
         oracle_command => handle_pool_command(oracle_command, &node_api, network_prefix),
