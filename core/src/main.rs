@@ -330,7 +330,6 @@ async fn main() -> Result<(), anyhow::Error> {
             read_only,
             enable_rest_api,
         } => {
-            let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
             let (_, repost_receiver) = bounded::<bool>(1);
 
             let node_scan_registry =
@@ -345,7 +344,7 @@ async fn main() -> Result<(), anyhow::Error> {
             // Start Oracle Core GET API Server
             if enable_rest_api {
                 let op_clone = oracle_pool.clone();
-                tokio_runtime.spawn(async {
+                tokio::spawn(async {
                     if let Err(e) =
                         start_rest_server(repost_receiver, op_clone, ORACLE_CONFIG.core_api_port)
                             .await
@@ -356,7 +355,7 @@ async fn main() -> Result<(), anyhow::Error> {
                 });
             }
             if let Some(metrics_port) = ORACLE_CONFIG.metrics_port {
-                tokio_runtime.spawn(async move {
+                tokio::spawn(async move {
                     if let Err(e) = start_metrics_server(metrics_port).await {
                         error!("An error occurred while starting the metrics server: {}", e);
                         std::process::exit(exitcode::SOFTWARE);
