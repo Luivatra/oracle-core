@@ -62,7 +62,6 @@ use ergo_lib::ergotree_ir::chain::address::NetworkAddress;
 use ergo_lib::ergotree_ir::chain::address::NetworkPrefix;
 use ergo_lib::ergotree_ir::chain::token::TokenAmount;
 use ergo_lib::ergotree_ir::chain::token::TokenId;
-use futures::StreamExt;
 use log::error;
 use log::LevelFilter;
 use metrics::start_metrics_server;
@@ -93,7 +92,6 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::RwLock;
-use tmq::subscribe;
 
 use crate::actions::execute_action;
 use crate::address_util::pks_to_network_addresses;
@@ -213,8 +211,7 @@ enum Command {
     },
 }
 
-#[tokio::main]
-async fn main() -> Result<(), anyhow::Error> {
+fn main() {
     let args = Args::parse();
 
     ORACLE_CONFIG_FILE_PATH
@@ -256,7 +253,7 @@ async fn main() -> Result<(), anyhow::Error> {
         println!(
             "Please, set the required parameters(node credentials, oracle_address) and run again"
         );
-        return Ok(());
+        return;
     }
 
     let cmdline_log_level = if args.verbose {
@@ -330,6 +327,7 @@ async fn main() -> Result<(), anyhow::Error> {
             read_only,
             enable_rest_api,
         } => {
+            let tokio_runtime = tokio::runtime::Runtime::new().unwrap();
             let (_, repost_receiver) = bounded::<bool>(1);
 
             let node_scan_registry =
@@ -344,7 +342,7 @@ async fn main() -> Result<(), anyhow::Error> {
             // Start Oracle Core GET API Server
             if enable_rest_api {
                 let op_clone = oracle_pool.clone();
-                tokio::spawn(async {
+                tokio_runtime.spawn(async {
                     if let Err(e) =
                         start_rest_server(repost_receiver, op_clone, ORACLE_CONFIG.core_api_port)
                             .await
@@ -355,18 +353,17 @@ async fn main() -> Result<(), anyhow::Error> {
                 });
             }
             if let Some(metrics_port) = ORACLE_CONFIG.metrics_port {
-                tokio::spawn(async move {
+                tokio_runtime.spawn(async move {
                     if let Err(e) = start_metrics_server(metrics_port).await {
                         error!("An error occurred while starting the metrics server: {}", e);
                         std::process::exit(exitcode::SOFTWARE);
                     }
                 });
             }
-            let mut socket = subscribe(&tmq::Context::new())
-                .connect("tcp://49.12.210.225:9060")
-                .unwrap()
-                .subscribe(b"newBlock")
-                .unwrap();
+            let ctx = zmq::Context::new();
+            let socket = ctx.socket(zmq::SocketType::SUB).unwrap();
+            let _ = socket.set_subscribe(b"newBlock");
+            let _ = socket.connect("tcp://49.12.210.225:9060");
             loop {
                 if let Err(e) = main_loop_iteration(
                     oracle_pool.clone(),
@@ -375,19 +372,15 @@ async fn main() -> Result<(), anyhow::Error> {
                     &node_api,
                     action_report_storage.clone(),
                     &change_address,
-                )
-                .await
-                {
+                ) {
                     error!("error: {:?}", e);
                 }
                 // Delay loop restart
-                let _ = socket.next().await.unwrap().unwrap();
-                println!("new block");
+                let _ = socket.recv_msg(0);
             }
         }
         oracle_command => handle_pool_command(oracle_command, &node_api, network_prefix),
-    };
-    Ok(())
+    }
 }
 
 /// Handle all other commands
@@ -528,7 +521,7 @@ fn handle_pool_command(command: Command, node_api: &NodeApi, network_prefix: Net
     }
 }
 
-async fn main_loop_iteration(
+fn main_loop_iteration(
     oracle_pool: Arc<OraclePool>,
     read_only: bool,
     datapoint_source: &RuntimeDataPointSource,
@@ -566,8 +559,7 @@ async fn main_loop_iteration(
             height,
             change_address.address(),
             datapoint_source,
-        )
-        .await;
+        );
         if let Some((action, report)) =
             log_and_continue_if_non_fatal(change_address.network(), build_action_tuple_res)?
         {

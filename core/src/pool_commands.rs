@@ -49,7 +49,7 @@ pub enum PoolCommandError {
     WrongOracleAddressType,
 }
 
-pub async fn build_action(
+pub fn build_action(
     cmd: PoolCommand,
     op: &OraclePool,
     wallet: &dyn WalletDataSource,
@@ -93,7 +93,6 @@ pub async fn build_action(
                     new_epoch_counter,
                     &POOL_CONFIG.token_ids.reward_token_id,
                 )
-                .await
                 .map_err(Into::into)
                 .map(|(action, report)| (action.into(), report.into()))
             } else {
