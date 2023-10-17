@@ -376,7 +376,7 @@ fn main() {
                     error!("error: {:?}", e);
                 }
                 // Delay loop restart
-                let _ = socket.recv_msg(0);
+                let _ = socket.recv_multipart(0);
                 println!("new block");
             }
         }
