@@ -102,6 +102,7 @@ use crate::contracts::ballot::BallotContract;
 use crate::default_parameters::print_contract_hashes;
 use crate::migrate::check_migration_to_split_config;
 use crate::oracle_config::OracleConfig;
+use crate::oracle_config::BASE_FEE;
 use crate::oracle_config::DEFAULT_ORACLE_CONFIG_FILE_NAME;
 use crate::oracle_config::ORACLE_CONFIG_FILE_PATH;
 use crate::oracle_config::ORACLE_CONFIG_OPT;
@@ -393,7 +394,13 @@ fn main() {
                         .context("Failed to get the current height")
                         .unwrap() as u32,
                 );
-                unspent_boxes = node_api.get_unspent_wallet_boxes().unwrap();
+                unspent_boxes = node_api
+                    .get_unspent_wallet_boxes()
+                    .unwrap()
+                    .iter()
+                    .filter(|eb| eb.value == *BASE_FEE && eb.tokens.is_none())
+                    .map(|eb| eb.to_owned())
+                    .collect();
                 // Delay loop restart
                 let _ = socket.recv_multipart(0);
                 height = BlockHeight(height.0 + 1);
