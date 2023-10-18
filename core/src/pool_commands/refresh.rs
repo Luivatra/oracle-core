@@ -27,6 +27,7 @@ use ergo_lib::chain::ergo_box::box_builder::ErgoBoxCandidateBuilderError;
 use ergo_lib::ergo_chain_types::EcPoint;
 use ergo_lib::ergotree_interpreter::sigma_protocol::prover::ContextExtension;
 use ergo_lib::ergotree_ir::chain::address::Address;
+use ergo_lib::ergotree_ir::chain::ergo_box::ErgoBox;
 use ergo_lib::ergotree_ir::chain::ergo_box::ErgoBoxCandidate;
 use ergo_lib::ergotree_ir::chain::token::TokenAmount;
 use ergo_lib::wallet::box_selector::BoxSelection;
@@ -70,11 +71,12 @@ pub fn build_refresh_action(
     datapoint_src: &dyn PostedDatapointBoxesSource,
     max_deviation_percent: u32,
     min_data_points: MinDatapoints,
-    wallet: &dyn WalletDataSource,
+    _wallet: &dyn WalletDataSource,
     height: BlockHeight,
     change_address: Address,
     my_oracle_pk: &EcPoint,
     buyback_box_source: Option<&dyn BuybackBoxSource>,
+    unspent_boxes: &Vec<ErgoBox>,
 ) -> Result<(RefreshAction, RefreshActionReport), RefreshActionError> {
     let tx_fee = *BASE_FEE;
     let in_pool_box = pool_box_source.get_pool_box()?;
@@ -121,9 +123,9 @@ pub fn build_refresh_action(
         .transpose()?
         .flatten();
 
-    let unspent_boxes = wallet.get_unspent_wallet_boxes()?;
+    //let unspent_boxes = wallet.get_unspent_wallet_boxes()?;
     let box_selector = SimpleBoxSelector::new();
-    let selection = box_selector.select(unspent_boxes, tx_fee, &[])?;
+    let selection = box_selector.select(unspent_boxes.to_owned(), tx_fee, &[])?;
 
     let mut input_boxes = vec![
         in_pool_box.get_box().clone(),
@@ -585,6 +587,7 @@ mod tests {
             change_address.address(),
             &oracle_pub_key,
             None,
+            &wallet_mock.get_unspent_wallet_boxes().unwrap(),
         )
         .unwrap();
 
@@ -632,6 +635,7 @@ mod tests {
             change_address.address(),
             &oracle_pub_key,
             None,
+            &wallet_mock.get_unspent_wallet_boxes().unwrap(),
         );
         dbg!(&wrong_epoch_res);
         assert!(matches!(
@@ -681,6 +685,7 @@ mod tests {
             change_address.address(),
             &oracle_pub_key,
             Some(&buyback_source),
+            &wallet_mock.get_unspent_wallet_boxes().unwrap(),
         )
         .unwrap();
 

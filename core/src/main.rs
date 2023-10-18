@@ -59,6 +59,7 @@ use datapoint_source::RuntimeDataPointSource;
 use ergo_lib::ergo_chain_types::Digest32;
 use ergo_lib::ergotree_ir::chain::address::NetworkAddress;
 use ergo_lib::ergotree_ir::chain::address::NetworkPrefix;
+use ergo_lib::ergotree_ir::chain::ergo_box::ErgoBox;
 use ergo_lib::ergotree_ir::chain::token::TokenAmount;
 use ergo_lib::ergotree_ir::chain::token::TokenId;
 use log::error;
@@ -91,6 +92,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::sync::RwLock;
+use wallet::WalletDataSource;
 
 use crate::actions::execute_action;
 use crate::address_util::pks_to_network_addresses;
@@ -370,6 +372,7 @@ fn main() {
                     .context("Failed to get the current height")
                     .unwrap() as u32,
             );
+            let mut unspent_boxes = node_api.get_unspent_wallet_boxes().unwrap();
             loop {
                 if let Err(e) = main_loop_iteration(
                     oracle_pool.clone(),
@@ -379,6 +382,7 @@ fn main() {
                     action_report_storage.clone(),
                     &change_address,
                     height,
+                    &unspent_boxes,
                 ) {
                     error!("error: {:?}", e);
                 }
@@ -389,6 +393,7 @@ fn main() {
                         .context("Failed to get the current height")
                         .unwrap() as u32,
                 );
+                unspent_boxes = node_api.get_unspent_wallet_boxes().unwrap();
                 // Delay loop restart
                 let _ = socket.recv_multipart(0);
                 height = BlockHeight(height.0 + 1);
@@ -545,6 +550,7 @@ fn main_loop_iteration(
     report_storage: Arc<RwLock<ActionReportStorage>>,
     change_address: &NetworkAddress,
     height: BlockHeight,
+    unspent_boxes: &Vec<ErgoBox>,
 ) -> std::result::Result<(), anyhow::Error> {
     // if !node_api.node.wallet_status()?.unlocked {
     //     return Err(anyhow!("Wallet is locked!"));
@@ -576,6 +582,7 @@ fn main_loop_iteration(
             height,
             change_address.address(),
             datapoint_source,
+            unspent_boxes,
         );
         if let Some((action, report)) =
             log_and_continue_if_non_fatal(change_address.network(), build_action_tuple_res)?
