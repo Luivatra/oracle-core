@@ -370,13 +370,6 @@ fn main() {
                     .context("Failed to get the current height")
                     .unwrap() as u32,
             );
-            let mut pool_state = match oracle_pool.get_live_epoch_state() {
-                Ok(live_epoch_state) => PoolState::LiveEpoch(live_epoch_state),
-                Err(error) => {
-                    log::error!("error getting live epoch state: {:?}", error);
-                    PoolState::NeedsBootstrap
-                }
-            };
             loop {
                 if let Err(e) = main_loop_iteration(
                     oracle_pool.clone(),
@@ -386,7 +379,6 @@ fn main() {
                     action_report_storage.clone(),
                     &change_address,
                     height,
-                    pool_state,
                 ) {
                     error!("error: {:?}", e);
                 }
@@ -397,13 +389,6 @@ fn main() {
                         .context("Failed to get the current height")
                         .unwrap() as u32,
                 );
-                pool_state = match oracle_pool.get_live_epoch_state() {
-                    Ok(live_epoch_state) => PoolState::LiveEpoch(live_epoch_state),
-                    Err(error) => {
-                        log::error!("error getting live epoch state: {:?}", error);
-                        PoolState::NeedsBootstrap
-                    }
-                };
                 // Delay loop restart
                 let _ = socket.recv_multipart(0);
                 height = BlockHeight(height.0 + 1);
@@ -560,7 +545,6 @@ fn main_loop_iteration(
     report_storage: Arc<RwLock<ActionReportStorage>>,
     change_address: &NetworkAddress,
     height: BlockHeight,
-    pool_state: PoolState,
 ) -> std::result::Result<(), anyhow::Error> {
     // if !node_api.node.wallet_status()?.unlocked {
     //     return Err(anyhow!("Wallet is locked!"));
@@ -571,13 +555,13 @@ fn main_loop_iteration(
     //         .current_block_height()
     //         .context("Failed to get the current height")? as u32,
     // );
-    // let pool_state = match oracle_pool.get_live_epoch_state() {
-    //     Ok(live_epoch_state) => PoolState::LiveEpoch(live_epoch_state),
-    //     Err(error) => {
-    //         log::error!("error getting live epoch state: {:?}", error);
-    //         PoolState::NeedsBootstrap
-    //     }
-    // };
+    let pool_state = match oracle_pool.get_live_epoch_state() {
+        Ok(live_epoch_state) => PoolState::LiveEpoch(live_epoch_state),
+        Err(error) => {
+            log::error!("error getting live epoch state: {:?}", error);
+            PoolState::NeedsBootstrap
+        }
+    };
     let epoch_length = POOL_CONFIG
         .refresh_box_wrapper_inputs
         .contract_inputs
