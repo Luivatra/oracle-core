@@ -48,7 +48,7 @@ pub fn process(
                     Posted { epoch_id, height } => {
                         if height < min_start_height || epoch_id != live_epoch.pool_box_epoch_id {
                             Some(PoolCommand::PublishSubsequentDataPoint { republish: true })
-                        } else if live_epoch.latest_pool_box_height < min_start_height
+                        } else if live_epoch.latest_pool_box_height <= min_start_height
                             && epoch_id == live_epoch.pool_box_epoch_id
                         {
                             Some(PoolCommand::Refresh)
